@@ -15,7 +15,7 @@
 #
 # Redistributions of source code must retain the above copyright
 # notice, this list of conditions and the following disclaimer.
-# 
+#
 # Redistributions in binary form must reproduce the above copyright
 # notice, this list of conditions and the following disclaimer in the
 # documentation and/or other materials provided with the distribution.
@@ -38,11 +38,14 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #
 # ----------------------------------------------------------------------------
-
+#
+# Modified by Julian Ingram, 2016
+# - Updated the algorithm for the arithmetic functions to allow larger numbers
+#
 # This is the GNU Make Standard Library version number as a list with
 # three items: major, minor, revision
 
-gmsl_version := 1 1 7
+gmsl_version := 1 1 7 m
 
 __gmsl_name := GNU Make Standard Library
 
@@ -120,6 +123,9 @@ endif
 
 __gmsl_dollar := $$
 __gmsl_hash := \#
+__gmsl_digits := 0 1 2 3 4 5 6 7 8 9
+__gmsl_inc_lut := 2 3 4 5 6 7 8 9 0
+__gmsl_hex_digits := 0 1 2 3 4 5 6 7 8 9 a b c d e f
 
 # ----------------------------------------------------------------------------
 # ----------------------------------------------------------------------------
@@ -342,7 +348,7 @@ merge = $(__gmsl_tr2)$(strip $(if $2,                                     \
 ifdef __gmsl_have_eval
 # ----------------------------------------------------------------------------
 # Function:  tr
-# Arguments: 1: The list of characters to translate from 
+# Arguments: 1: The list of characters to translate from
 #            2: The list of characters to translate to
 #            3: The text to translate
 # Returns:   Returns the text after translating characters
@@ -396,7 +402,7 @@ __gmsl_characters += { } [ ] \ : ; ' " < > , . / ? |
 
 # This results in __gmsl_space containing just a space
 
-__gmsl_space := 
+__gmsl_space :=
 __gmsl_space +=
 
 strlen = $(__gmsl_tr1)$(call assert_no_dollar,$0,$1)$(strip $(eval __temp := $(subst $(__gmsl_space),x,$1))$(foreach a,$(__gmsl_characters),$(eval __temp := $$(subst $$a,x,$(__temp))))$(eval __temp := $(subst x,x ,$(__temp)))$(words $(__temp)))
@@ -413,11 +419,11 @@ endef
 # Arguments: 1: A string
 #            2: Start position (first character is 1)
 #            3: End position (inclusive)
-# Returns:   A substring.  
-# Note:      The string in $1 must not contain a §
+# Returns:   A substring
+# Note:      The string in $1 must not contain a ï¿½
 # ----------------------------------------------------------------------------
 
-substr = $(if $2,$(__gmsl_tr3)$(call assert_no_dollar,$0,$1$2$3)$(strip $(eval __temp := $$(subst $$(__gmsl_space),§ ,$$1))$(foreach a,$(__gmsl_characters),$(eval __temp := $$(subst $$a,$$a$$(__gmsl_space),$(__temp))))$(eval __temp := $(wordlist $2,$3,$(__temp))))$(subst §,$(__gmsl_space),$(subst $(__gmsl_space),,$(__temp))))
+substr = $(if $2,$(__gmsl_tr3)$(call assert_no_dollar,$0,$1$2$3)$(strip $(eval __temp := $$(subst $$(__gmsl_space),ï¿½ ,$$1))$(foreach a,$(__gmsl_characters),$(eval __temp := $$(subst $$a,$$a$$(__gmsl_space),$(__temp))))$(eval __temp := $(wordlist $2,$3,$(__temp))))$(subst ï¿½,$(__gmsl_space),$(subst $(__gmsl_space),,$(__temp))))
 
 endif # __gmsl_have_eval
 
@@ -430,7 +436,7 @@ endif # __gmsl_have_eval
 # set_insert individual elements
 
 # This is the empty set
-empty_set := 
+empty_set :=
 
 # ----------------------------------------------------------------------------
 # Function:  set_create
@@ -457,7 +463,7 @@ set_remove = $(__gmsl_tr2)$(filter-out $1,$2)
 
 # ----------------------------------------------------------------------------
 # Function:  set_is_member, set_is_not_member
-# Arguments: 1: A single element 
+# Arguments: 1: A single element
 #            2: A set
 # Returns:   (set_is_member) Returns $(true) if the element is in the set
 #            (set_is_not_member) Returns $(false) if the element is in the set
@@ -501,262 +507,549 @@ set_equal = $(__gmsl_tr2)$(call seq,$1,$2)
 # ARITHMETIC LIBRARY
 # ###########################################################################
 
-# Integers a represented by lists with the equivalent number of x's.
-# For example the number 4 is x x x x. 
+# ----------------------------------------------------------------------------
+# Function:  arith_split
+# Arguments: 1: An unsigned integer in human readable decimal form
+# Returns:   A arith_split up list of decimal digits (list form)
+# ----------------------------------------------------------------------------
+arith_split = $(__gmsl_tr1)$(strip $(if $1,$(foreach d,$(__gmsl_digits),$(if $(1:$(d)%=),,$(d) $(call arith_split,$(1:$(d)%=%))))))
 
 # ----------------------------------------------------------------------------
-# Function:  int_decode
-# Arguments: 1: A number of x's representation
-# Returns:   Returns the integer for human consumption that is represented
-#            by the string of x's
+# Function:  arith_concat
+# Arguments: 1: A number in list form
+# Returns:   The integer for human consumption that is represented by
+#            the list
 # ----------------------------------------------------------------------------
-int_decode = $(__gmsl_tr1)$(words $1)
+arith_concat = $(__gmsl_tr1)$(subst $(__gmsl_space),,$1)
 
 # ----------------------------------------------------------------------------
-# Function:  int_encode
-# Arguments: 1: A number in human-readable integer form
-# Returns:   Returns the integer encoded as a string of x's
+# Function:  rl_encode
+# Arguments: 1: An unsigned integer in human readable decimal form
+# Returns:   A reversed split up list of decimal digits with no leading zeros
+#            (reversed list form)
 # ----------------------------------------------------------------------------
-__int_encode = $(if $1,$(if $(call seq,$(words $(wordlist 1,$1,$2)),$1),$(wordlist 1,$1,$2),$(call __int_encode,$1,$(if $2,$2 $2,x))))
-__strip_leading_zero = $(if $1,$(if $(call seq,$(patsubst 0%,%,$1),$1),$1,$(call __strip_leading_zero,$(patsubst 0%,%,$1))),0)
-int_encode = $(__gmsl_tr1)$(call __int_encode,$(call __strip_leading_zero,$1))
-
-# The arithmetic library functions come in two forms: one form of each
-# function takes integers as arguments and the other form takes the
-# encoded form (x's created by a call to int_encode).  For example,
-# there are two plus functions:
-#
-# plus        Called with integer arguments and returns an integer
-# int_plus    Called with encoded arguments and returns an encoded result
-#
-# plus will be slower than int_plus because its arguments and result
-# have to be translated between the x's format and integers.  If doing
-# a complex calculation use the int_* forms with a single encoding of
-# inputs and single decoding of the output.  For simple calculations
-# the direct forms can be used.
-
-# Helper function used to wrap an int_* function into a function that
-# takes a pair of integers, perhaps a function and returns an integer
-# result
-__gmsl_int_wrap = $(call int_decode,$(call $1,$(call int_encode,$2),$(call int_encode,$3)))
-__gmsl_int_wrap1 = $(call int_decode,$(call $1,$(call int_encode,$2)))
-__gmsl_int_wrap2 = $(call $1,$(call int_encode,$2),$(call int_encode,$3))
+rl_encode = $(__gmsl_tr1)$(call rl_slzs,$(call reverse,$(call arith_split,$1)))
 
 # ----------------------------------------------------------------------------
-# Function:  int_plus
-# Arguments: 1: A number in x's representation
-#            2: Another number in x's represntation
-# Returns:   Returns the sum of the two numbers in x's representation
+# Function:  rl_decode
+# Arguments: 1: An unsigned integer - in reversed list form
+# Returns:   An unsigned integer in human-readable decimal form
 # ----------------------------------------------------------------------------
-int_plus = $(strip $(__gmsl_tr2)$1 $2)
+rl_decode = $(__gmsl_tr1)$(call arith_concat,$(call reverse,$1))
 
 # ----------------------------------------------------------------------------
-# Function:  plus (wrapped version of int_plus)
-# Arguments: 1: An integer
-#            2: Another integer
-# Returns:   Returns the sum of the two integers
+# Function:  rl_wrap
+# Arguments: 1: A function to call, accepting 1 argument in reversed list form
+#            2: The argument to the function in human readable decimal form
+# Returns:   Whatever the function returns
 # ----------------------------------------------------------------------------
-plus = $(__gmsl_tr2)$(call __gmsl_int_wrap,int_plus,$1,$2)
+rl_wrap = $(__gmsl_tr2)$(call rl_decode,$(call $1,$(call rl_encode,$2)))
 
 # ----------------------------------------------------------------------------
-# Function:  int_subtract
-# Arguments: 1: A number in x's representation
-#            2: Another number in x's represntation
-# Returns:   Returns the difference of the two numbers in x's representation,
-#            or outputs an error on a numeric underflow
+# Function:  rl_wrap2
+# Arguments: 1: A function to call, accepting 2 arguments in reversed list form
+#            2: The 1st argument to the function in human readable decimal form
+#            2: The 2nd argument to the function in human readable decimal form
+# Returns:   Whatever the function returns
 # ----------------------------------------------------------------------------
-int_subtract = $(strip $(__gmsl_tr2)$(if $(call int_gte,$1,$2), \
-                $(filter-out xx,$(join $1,$2)),                 \
-                $(call __gmsl_warning,Subtraction underflow)))
+rl_wrap2 = $(__gmsl_tr3)$(call rl_decode,$(call $1,$(call rl_encode,$2),$(call rl_encode,$3)))
 
 # ----------------------------------------------------------------------------
-# Function:  subtract (wrapped version of int_subtract)
-# Arguments: 1: An integer
-#            2: Another integer
-# Returns:   Returns the difference of the two integers,
-#            or outputs an error on a numeric underflow
+# Function:  l_encode
+# Arguments: 1: An unsigned integer in human readable decimal form
+# Returns:   A split up list of decimal digits with no leading zeros (list form)
 # ----------------------------------------------------------------------------
-subtract = $(__gmsl_tr2)$(call __gmsl_int_wrap,int_subtract,$1,$2)
+l_encode = $(__gmsl_tr1)$(call l_slzs,$(call arith_split,$1))
 
 # ----------------------------------------------------------------------------
-# Function:  int_multiply
-# Arguments: 1: A number in x's representation
-#            2: Another number in x's represntation
-# Returns:   Returns the product of the two numbers in x's representation
+# Function:  l_wrap2
+# Arguments: 1: A function to call, accepting 2 arguments in list form
+#            2: The 1st argument to the function in human readable decimal form
+#            2: The 2nd argument to the function in human readable decimal form
+# Returns:   Whatever the function returns
 # ----------------------------------------------------------------------------
-int_multiply = $(strip $(__gmsl_tr2)$(foreach a,$1,$2))
+l_wrap2 = $(__gmsl_tr3)$(call arith_concat,$(call $1,$(call l_encode,$2),$(call l_encode,$3)))
 
 # ----------------------------------------------------------------------------
-# Function:  multiply (wrapped version of int_multiply)
-# Arguments: 1: An integer
-#            2: Another integer
-# Returns:   Returns the product of the two integers
+# Function:  rl_slz
+# Arguments: 1: An unsigned integer in reversed list form
+# Returns:   The argument, but less one leading zero, if one exists and the
+#            total value is not 0 otherwise, returns the argument
 # ----------------------------------------------------------------------------
-multiply = $(__gmsl_tr2)$(call __gmsl_int_wrap,int_multiply,$1,$2)
+rl_slz2 = $(if $(call nlz_eq,$(lastword $1),0),$(if $(call nlz_eq,$2,1),0,$(wordlist 1,$(call us_dec,$2),$1)),$1)
+rl_slz = $(__gmsl_tr1)$(call rl_slz2,$1,$(words $1))
 
 # ----------------------------------------------------------------------------
-# Function:  int_divide
-# Arguments: 1: A number in x's representation
-#            2: Another number in x's represntation
-# Returns:   Returns the result of integer division of argument 1 divided
-#            by argument 2 in x's representation
+# Function:  rl_slzs
+# Arguments: 1: An unsigned integer in reversed list form
+# Returns:   The argument, but less all leading zeros. If the total value is 0,
+#            returns 0
 # ----------------------------------------------------------------------------
-int_divide = $(__gmsl_tr2)$(strip $(if $1,$(if $2,                         \
-                 $(if $(call int_gte,$1,$2),                               \
-                     x $(call int_divide,$(call int_subtract,$1,$2),$2),), \
-                 $(call __gmsl_error,Division by zero))))
+rl_slzs2 = $(if $(call nlz_eq,$(lastword $1),0),$(if $(call nlz_eq,$2,1),0,$(call rl_slzs,$(wordlist 1,$(call us_dec,$2),$1))),$1)
+rl_slzs = $(__gmsl_tr1)$(call rl_slzs2,$1,$(words $1))
 
 # ----------------------------------------------------------------------------
-# Function:  divide (wrapped version of int_divide)
-# Arguments: 1: An integer
-#            2: Another integer
-# Returns:   Returns the integer division of the first argument by the second
+# Function:  l_slzs
+# Arguments: 1: An unsigned integer in list form
+# Returns:   The argument, but less all leading zeros. If the total value is 0,
+#            returns 0
 # ----------------------------------------------------------------------------
-divide = $(__gmsl_tr2)$(call __gmsl_int_wrap,int_divide,$1,$2)
+l_slzs2 = $(if $(call nlz_eq,$(firstword $1),0),$(if $(call nlz_eq,$2,1),0,$(call l_slzs,$(wordlist 2,$(words $1),$1))),$1)
+l_slzs = $(__gmsl_tr1)$(call l_slzs2,$1,$(words $1))
 
 # ----------------------------------------------------------------------------
-# Function:  int_max, int_min
-# Arguments: 1: A number in x's representation
-#            2: Another number in x's represntation
-# Returns:   Returns the maximum or minimum of its arguments in x's
-#            representation
+# Function:  nlz_eq
+# Arguments: 1: An unsigned integer in human readable decimal form with no
+#            leading zeros
+#            2: An unsigned integer in human readable decimal form with no
+#            leading zeros
+# Returns:   A non empty string if the 2 arguments are equal, otherwise an empty
+#            string
 # ----------------------------------------------------------------------------
-int_max = $(__gmsl_tr2)$(subst xx,x,$(join $1,$2))
-int_min = $(__gmsl_tr2)$(subst xx,x,$(filter xx,$(join $1,$2)))
+nlz_eq = $(__gmsl_tr2)$(filter $1,$2)
 
 # ----------------------------------------------------------------------------
-# Function:  max, min
-# Arguments: 1: An integer
-#            2: Another integer
-# Returns:   Returns the maximum or minimum of its integer arguments
+# Function:  digit_lt
+# Arguments: 1: A single decimal digit
+#            2: A single decimal digit
+# Returns:   A non empty string if argument 1 is less than argument 2,
+#            otherwise an empty string
 # ----------------------------------------------------------------------------
-max = $(__gmsl_tr2)$(call __gmsl_int_wrap,int_max,$1,$2)
-min = $(__gmsl_tr2)$(call __gmsl_int_wrap,int_min,$1,$2)
+digit_lt = $(__gmsl_tr2)$(if $(call nlz_eq,$1,$2),,$(if $(call nlz_eq,$1,0),1,$(call digit_lt,$(word $1,$(__gmsl_digits)),$2)))
 
 # ----------------------------------------------------------------------------
-# Function: int_gt, int_gte, int_lt, int_lte, int_eq, int_ne
-# Arguments: Two x's representation numbers to be compared
-# Returns:   $(true) or $(false)
-#
-# int_gt    First argument greater than second argument
-# int_gte   First argument greater than or equal to second argument
-# int_lt    First argument less than second argument 
-# int_lte   First argument less than or equal to second argument
-# int_eq    First argument is numerically equal to the second argument
-# int_ne    First argument is not numerically equal to the second argument
+# Function:  digit_inc
+# Arguments: 1: A single decimal digit
+# Returns:   The argument + 1 or if the argument is 9, 0
 # ----------------------------------------------------------------------------
-int_gt = $(__gmsl_tr2)$(call __gmsl_make_bool,      \
-                          $(filter-out $(words $2), \
-                              $(words $(call int_max,$1,$2))))
-int_gte = $(__gmsl_tr2)$(call __gmsl_make_bool,     \
-                           $(call int_gt,$1,$2)$(call int_eq,$1,$2))
-int_lt = $(__gmsl_tr2)$(call __gmsl_make_bool,      \
-                          $(filter-out $(words $1), \
-                              $(words $(call int_max,$1,$2))))
-int_lte = $(__gmsl_tr2)$(call __gmsl_make_bool,     \
-                           $(call int_lt,$1,$2)$(call int_eq,$1,$2))
-int_eq = $(__gmsl_tr2)$(call __gmsl_make_bool,      \
-                          $(filter $(words $1),$(words $2)))
-int_ne = $(__gmsl_tr2)$(call __gmsl_make_bool,      \
-                          $(filter-out $(words $1),$(words $2)))
+digit_inc = $(__gmsl_tr1)$(if $(call nlz_eq,$1,0),1,$(word $1,$(__gmsl_inc_lut)))
 
 # ----------------------------------------------------------------------------
-# Function: gt, gte, lt, lte, eq, ne
-# Arguments: Two integers to be compared
-# Returns:   $(true) or $(false)
-#
-# gt    First argument greater than second argument
-# gte   First argument greater than or equal to second argument
-# lt    First argument less than second argument 
-# lte   First argument less than or equal to second argument
-# eq    First argument is numerically equal to the second argument
-# ne    First argument is not numerically equal to the second argument
+# Function:  digit_dec
+# Arguments: 1: A single decimal digit
+# Returns:   The argument - 1 or if the argument is 0, 9
 # ----------------------------------------------------------------------------
-gt = $(__gmsl_tr2)$(call __gmsl_int_wrap2,int_gt,$1,$2)
-gte = $(__gmsl_tr2)$(call __gmsl_int_wrap2,int_gte,$1,$2)
-lt = $(__gmsl_tr2)$(call __gmsl_int_wrap2,int_lt,$1,$2)
-lte = $(__gmsl_tr2)$(call __gmsl_int_wrap2,int_lte,$1,$2)
-eq = $(__gmsl_tr2)$(call __gmsl_int_wrap2,int_eq,$1,$2)
-ne = $(__gmsl_tr2)$(call __gmsl_int_wrap2,int_ne,$1,$2)
-
-# increment adds 1 to its argument, decrement subtracts 1.  Note that
-# decrement does not range check and hence will not underflow, but
-# will incorrectly say that 0 - 1 = 0
+digit_dec = $(__gmsl_tr1)$(if $(call nlz_eq,$1,0),9,$(word $1,$(__gmsl_digits)))
 
 # ----------------------------------------------------------------------------
-# Function:  int_inc
-# Arguments: 1: A number in x's representation
-# Returns:   The number incremented by 1 in x's representation
+# Function:  digit_add
+# Arguments: 1: A single decimal digit
+#            2: A single decimal digit
+# Returns:   The sum of the 2 arguments mod 10
 # ----------------------------------------------------------------------------
-int_inc = $(strip $(__gmsl_tr1)$1 x)
+digit_add = $(__gmsl_tr2)$(if $(call nlz_eq,$2,0),$1,$(call digit_add,$(call digit_inc,$1),$(call digit_dec,$2)))
 
 # ----------------------------------------------------------------------------
-# Function:  inc
-# Arguments: 1: An integer
-# Returns:   The argument incremented by 1
+# Function:  digit_sub
+# Arguments: 1: A single decimal digit
+#            2: A single decimal digit
+# Returns:   Argument 2 subtracted from argument 1, wrapping to 9
 # ----------------------------------------------------------------------------
-inc = $(__gmsl_tr1)$(call __gmsl_int_wrap1,int_inc,$1)
+digit_sub = $(__gmsl_tr2)$(if $(call nlz_eq,$2,0),$1,$(call digit_sub,$(call digit_dec,$1),$(call digit_dec,$2)))
 
 # ----------------------------------------------------------------------------
-# Function:  int_dec
-# Arguments: 1: A number in x's representation
-# Returns:   The number decremented by 1 in x's representation
+# Function:  l_lt
+# Arguments: 1: An unsigned integer in list form
+#            2: An unsigned integer in list form
+# Returns:   A non empty string if argument 1 is less than argument 2,
+#            otherwise an empty string
 # ----------------------------------------------------------------------------
-int_dec = $(__gmsl_tr1)$(strip                        \
-          $(if $(call sne,0,$(words $1)),             \
-          $(wordlist 2,$(words $1),$1)))
+l_lt4 = $(if $(call digit_lt,$3,$4),1,$(if $(call nlz_eq,$3,$4),$(if $1,$(call l_lt,$1,$2),),))
+l_lt3 = $(call l_lt4,$(wordlist 2,$3,$1),$(wordlist 2,$3,$2),$(firstword $1),$(firstword $2))
+l_lt2 = $(if $(call nlz_eq,$3,$4),$(call l_lt3,$1,$2,$3),$(if $(call us_lt,$3,$4),1,))
+l_lt = $(__gmsl_tr2)$(call l_lt2,$1,$2,$(words $1),$(words $2))
 
 # ----------------------------------------------------------------------------
-# Function:  dec
-# Arguments: 1: An integer
-# Returns:   The argument decremented by 1
+# Function:  rl_lt
+# Arguments: 1: An unsigned integer in reversed list form
+#            2: An unsigned integer in reversed list form
+# Returns:   A non empty string if argument 1 is less than argument 2,
+#            otherwise an empty string
 # ----------------------------------------------------------------------------
-dec = $(__gmsl_tr1)$(call __gmsl_int_wrap1,int_dec,$1)
-
-# double doubles its argument, and halve halves it
-
-# ----------------------------------------------------------------------------
-# Function:  int_double
-# Arguments: 1: A number in x's representation
-# Returns:   The number doubled (i.e. * 2) and returned in x's representation
-# ----------------------------------------------------------------------------
-int_double = $(strip $(__gmsl_tr1)$1 $1)
+rl_lt = $(__gmsl_tr2)$(call reverse,$(call l_lt,$(call reverse,$1),$(call reverse,$2)))
 
 # ----------------------------------------------------------------------------
-# Function:  double
-# Arguments: 1: An integer
-# Returns:   The integer times 2
+# Function:  rl_eq
+# Arguments: 1: An unsigned integer in reversed list form
+#            2: An unsigned integer in reversed list form
+# Returns:   A non empty string if argument 1 equal to argument 2, otherwise an
+#            empty string
 # ----------------------------------------------------------------------------
-double = $(__gmsl_tr1)$(call __gmsl_int_wrap1,int_double,$1)
+rl_eq2 = $(if $(call nlz_eq,$(word 1,$1),$(word 1,$2)),$(if $(call nlz_eq,$(words $1),1),1,$(call rl_eq2,$(wordlist 2,$(words $1),$1),$(wordlist 2,$(words $2),$2))),)
+rl_eq = $(__gmsl_tr2)$(if $(call nlz_eq,$(words $1),$(words $2)),$(call rl_eq2,$1,$2),)
 
 # ----------------------------------------------------------------------------
-# Function:  int_halve
-# Arguments: 1: A number in x's representation
-# Returns:   The number halved (i.e. / 2) and returned in x's representation
+# Function:  rl_inc
+# Arguments: 1: An unsigned integer in reversed list form
+# Returns:   The argument + 1
 # ----------------------------------------------------------------------------
-int_halve = $(__gmsl_tr1)$(strip $(subst xx,x,$(filter-out xy x y, \
-                             $(join $1,$(foreach a,$1,y x)))))
+rl_inc2 = $(if $(call nlz_eq,$2,0),1 $3,$(if $(call nlz_eq,$2,9),0 $(if $3,$(call rl_inc,$3),1),$(word $2,$(__gmsl_inc_lut)) $3))
+rl_inc = $(__gmsl_tr1)$(call rl_inc2,$1,$(firstword $1),$(wordlist 2,$(words $1),$1))
 
 # ----------------------------------------------------------------------------
-# Function:  halve
-# Arguments: 1: An integer
-# Returns:   The integer divided by 2
+# Function:  rl_dec
+# Arguments: 1: An unsigned integer in reversed list form
+# Returns:   The argument - 1, undefined if the argument is 0
 # ----------------------------------------------------------------------------
-halve = $(__gmsl_tr1)$(call __gmsl_int_wrap1,int_halve,$1)
+rl_dec3 = $(if $(call nlz_eq,$2,0),9 $(call rl_dec2,$3),$(word $2,$(__gmsl_digits)) $3)
+rl_dec2 = $(call rl_dec3,$1,$(firstword $1),$(wordlist 2,$(words $1),$1))
+rl_dec = $(__gmsl_tr1)$(call rl_slz,$(call rl_dec2,$1))
+
+rl_asx = $(call $1,$2,$3,$(firstword $2),$(firstword $3),$(wordlist 2,$(words $2),$2),$(wordlist 2,$(words $3),$3))
+
+# ----------------------------------------------------------------------------
+# Function:  rl_plus
+# Arguments: 1: An unsigned integer in reversed list form
+#            2: An unsigned integer in reversed list form
+# Returns:   The sum of the 2 arguments
+# ----------------------------------------------------------------------------
+rl_plusc4 = $(if $1,$(if $2,$(call rl_asx,rl_plusc2,$1,$2),$(call rl_inc,$1)),$(if $2,$(call rl_inc,$2),1))
+rl_plus4 = $(if $1,$(if $2,$(call rl_plus,$1,$2),$1),$2)
+rl_plusc3 = $7 $(if $(call nlz_eq,$3,9)$(call digit_lt,$7,$4),$(call rl_plusc4,$5,$6),$(call rl_plus4,$5,$6))
+rl_plus3 = $7 $(if $(call digit_lt,$7,$4),$(call rl_plusc4,$5,$6),$(call rl_plus4,$5,$6))
+rl_plusc2 = $(call rl_plusc3,$1,$2,$3,$4,$5,$6,$(call digit_add,$(call digit_inc,$3),$4))
+rl_plus2 = $(call rl_plus3,$1,$2,$3,$4,$5,$6,$(call digit_add,$3,$4))
+rl_plus = $(__gmsl_tr2)$(call rl_asx,rl_plus2,$1,$2)
+
+# ----------------------------------------------------------------------------
+# Function:  rl_subtract
+# Arguments: 1: An unsigned integer in reversed list form
+#            2: An unsigned integer in reversed list form
+# Returns:   Argument 2 subtaracted from argument 1, undefined if argument 2 is
+#            larger than argument 1
+# ----------------------------------------------------------------------------
+rl_subtractc4 = $(if $2,$(call rl_asx,rl_subtractc2,$1,$2),$(call rl_dec,$1))
+rl_subtract4 = $(if $2,$(call rl_subtract,$1,$2),$1)
+rl_subtractc3 = $7 $(if $(call nlz_eq,$3,0)$(call digit_lt,$3,$7),$(call rl_subtractc4,$5,$6),$(call rl_subtract4,$5,$6))
+rl_subtract3 = $7 $(if $(call digit_lt,$3,$7),$(call rl_subtractc4,$5,$6),$(call rl_subtract4,$5,$6))
+rl_subtractc2 = $(call rl_subtractc3,$1,$2,$3,$4,$5,$6,$(call digit_sub,$(call digit_dec,$3),$4))
+rl_subtract2 = $(call rl_subtract3,$1,$2,$3,$4,$5,$6,$(call digit_sub,$3,$4))
+rl_subtract = $(__gmsl_tr2)$(call rl_slzs,$(call rl_asx,rl_subtract2,$1,$2))
+
+# ----------------------------------------------------------------------------
+# Function:  rl_multiply
+# Arguments: 1: An unsigned integer in reversed list form
+#            2: An unsigned integer in reversed list form
+# Returns:   Argument 1 multiplied by argument 2
+# ----------------------------------------------------------------------------
+rl_multiply_nai3 = $(call rl_multiply_nai2,$(call rl_plus,$1,$3),$(call rl_dec,$2),$3)
+rl_multiply_nai2 = $(if $(call nlz_eq,$(words $2),1),$(if $(call nlz_eq,$2,0),0,$(if $(call nlz_eq,$2,1),$1,$(call rl_multiply_nai3,$1,$2,$3))),$(call rl_multiply_nai3,$1,$2,$3))
+rl_multiply_nai = $(call rl_multiply_nai2,$1,$2,$1)
+
+rl_multiply = $(__gmsl_tr2)$(strip $(if $(call nlz_eq,$(words $2),1),\
+	$3 $(call rl_multiply_nai,$1,$(firstword $2)),\
+	$(call rl_plus,$3 $(call rl_multiply_nai,$1,$(firstword $2)),$(call rl_multiply,$1,$(wordlist 2,$(words $2),$2),$3 0))))
+
+# ----------------------------------------------------------------------------
+# Function:  rl_divide
+# Arguments: 1: An unsigned integer in reversed list form
+#            2: An unsigned integer in reversed list form
+# Returns:   Argument 1 divided by argument 2, undefined if argument 2 is 0
+# ----------------------------------------------------------------------------
+rl_divide_nai2 = $(if $(call rl_lt,$1,$2),$5r$(call rl_subtract,$1,$4),$(call rl_divide_nai2,$1,$(call rl_plus,$2,$3),$3,$2,$(call rl_inc,$5)))
+rl_divide_nai = $(call rl_divide_nai2,$1,$2,$2,0,0)
+
+rl_divide5 = $(if $(call nlz_eq,$3,0),$5 $4,$(call rl_divide2,$7,$2,$3,$5 $4))
+rl_divide4 = $(call rl_divide5,$1,$2,$3,$4,$5,$6,$(wordlist 1,$3,$1) $(if $(call nlz_eq,$(words $6),1),$(if $(call nlz_eq,$6,0),,$6),$6))
+rl_divide3 = $(call rl_divide4,$1,$2,$(call us_dec,$3),$4,$(call arith_split,$(firstword $5)),$(call arith_split,$(lastword $5)))
+rl_divide2 = $(call rl_divide3,$1,$2,$3,$4,$(call subst,r,$(__gmsl_space),$(call arith_concat,$(call rl_divide_nai,$(wordlist $3,$(words $1),$1),$2))))
+rl_divide = $(__gmsl_tr2)$(call rl_slzs,$(call rl_divide2,$1,$2,$(words $1)))
+
+# ----------------------------------------------------------------------------
+# Function:  rl_power
+# Arguments: 1: An unsigned integer in reversed list form
+#            2: An unsigned integer in reversed list form
+# Returns:   Argument 1 to the power of argument 2
+# ----------------------------------------------------------------------------
+rl_power3 = $(call rl_power2,$(call rl_multiply,$1,$3),$(call rl_dec,$2),$3)
+rl_power2 = $(if $(call nlz_eq,$(words $2),1),$(if $(call nlz_eq,$2,0),$1,$(call rl_power3,$1,$2,$3)),$(call rl_power3,$1,$2,$3))
+rl_power = $(__gmsl_tr2)$(call rl_power2,1,$2,$1)
+
+# ----------------------------------------------------------------------------
+# Function:  rl_gpower
+# Arguments: 1: An unsigned integer in reversed list form
+#            2: An unsigned integer in reversed list form
+# Returns:   The largest power of argument 2 below or equal to argument 1
+# ----------------------------------------------------------------------------
+rl_gpower3 = $(if $(call rl_lt,$1,$4),$2,$(call rl_gpower2,$1,$4,$3))
+rl_gpower2 = $(call rl_gpower3,$1,$2,$3,$(call rl_multiply,$2,$3))
+rl_gpower = $(call rl_gpower2,$1,1,$2)
+
+# functions for dealing with unsigned numbers
+
+# ----------------------------------------------------------------------------
+# Function:  us_slzs
+# Arguments: 1: An unsigned integer in human readable decimal form
+# Returns:   The argument stripped of its leading zeros
+# ----------------------------------------------------------------------------
+us_slzs = $(if $(call nlz_eq,$1,0),0,$(if $(1:0%=),$1,$(call us_slzs,$(1:0%=%))))
+
+# ----------------------------------------------------------------------------
+# Function:  us_eq
+# Arguments: 1: An unsigned integer in human readable decimal form
+#            2: An unsigned integer in human readable decimal form
+# Returns:   A non empty string if the 2 arguments are equal, otherwise an empty
+#            string
+# ----------------------------------------------------------------------------
+us_eq = $(__gmsl_tr2)$(call nlz_eq,$(call us_slzs,$1),$(call us_slzs,$2))
+
+# ----------------------------------------------------------------------------
+# Function:  us_lt
+# Arguments: 1: An unsigned integer in human readable decimal form
+#            2: An unsigned integer in human readable decimal form
+# Returns:   A non empty string if argument 1 is less than argument 2, otherwise an empty
+#            string
+# ----------------------------------------------------------------------------
+us_lt = $(__gmsl_tr2)$(call l_wrap2,l_lt,$1,$2)
+
+# ----------------------------------------------------------------------------
+# Function:  us_inc
+# Arguments: 1: An unsigned integer in human readable decimal form
+# Returns:   The argument incremented by one
+# ----------------------------------------------------------------------------
+us_inc = $(__gmsl_tr1)$(call rl_wrap,rl_inc,$1)
+
+# ----------------------------------------------------------------------------
+# Function:  us_dec
+# Arguments: 1: An unsigned integer in human readable decimal form
+# Returns:   The argument decremented by one
+# ----------------------------------------------------------------------------
+us_dec = $(__gmsl_tr1)$(call rl_wrap,rl_dec,$1)
+
+# ----------------------------------------------------------------------------
+# Function:  us_plus
+# Arguments: 1: An unsigned integer in human readable decimal form
+#            2: An unsigned integer in human readable decimal form
+# Returns:   The sum of argument 1 and argument 2
+# ----------------------------------------------------------------------------
+us_plus = $(__gmsl_tr2)$(call rl_wrap2,rl_plus,$1,$2)
+
+# ----------------------------------------------------------------------------
+# Function:  us_subtract
+# Arguments: 1: An unsigned integer in human readable decimal form
+#            2: An unsigned integer in human readable decimal form
+# Returns:   Argument 2 subtracted from argument 1
+# ----------------------------------------------------------------------------
+us_subtract = $(__gmsl_tr2)$(call rl_wrap2,rl_subtract,$1,$2)
+
+# ----------------------------------------------------------------------------
+# Function:  us_multiply
+# Arguments: 1: An unsigned integer in human readable decimal form
+#            2: An unsigned integer in human readable decimal form
+# Returns:   Argument 1 multiplied by argument 2
+# ----------------------------------------------------------------------------
+us_multiply = $(__gmsl_tr2)$(call rl_wrap2,rl_multiply,$1,$2)
+
+# ----------------------------------------------------------------------------
+# Function:  us_divide
+# Arguments: 1: An unsigned integer in human readable decimal form
+#            2: An unsigned integer in human readable decimal form
+# Returns:   Argument 1 divided by argument 2
+# ----------------------------------------------------------------------------
+us_divide = $(__gmsl_tr2)$(if $(call eq,$2,0),Division by zero,$(call rl_wrap2,rl_divide,$1,$2))
+
+# ----------------------------------------------------------------------------
+# Function:  us_power
+# Arguments: 1: An unsigned integer in human readable decimal form
+#            2: An unsigned integer in human readable decimal form
+# Returns:   Argument 1 to the power of argument 2
+# ----------------------------------------------------------------------------
+us_power = $(__gmsl_tr2)$(call rl_wrap2,rl_power,$1,$2)
+
+# ----------------------------------------------------------------------------
+# Function:  us_gpower
+# Arguments: 1: An unsigned integer in human readable decimal form
+#            2: An unsigned integer in human readable decimal form
+# Returns:   The largest power of argument 2 below or equal to argument 1
+# ----------------------------------------------------------------------------
+us_gpower = $(__gmsl_tr2)$(call rl_wrap2,rl_gpower,$1,$2)
+
+# ----------------------------------------------------------------------------
+# Function:  us_dec2basen
+# Arguments: 1: An unsigned integer in human readable decimal form
+#            2: An unsigned integer in human readable decimal form
+# Returns:   Argument 1 represented in base argument 2, undefined if argument 2
+# is over 16
+# ----------------------------------------------------------------------------
+us_dec2basen3 = $(call us_dec2basen2,$(call us_subtract,$1,$(call us_multiply,$3,$5)),$2,$(call us_divide,$3,$2),$4$(word $(call us_inc,$5),$(__gmsl_hex_digits)))
+us_dec2basen2 = $(if $(call us_eq,$3,0),$(if $4,$4,0),$(call us_dec2basen3,$1,$2,$3,$4,$(call us_divide,$1,$3)))
+us_dec2basen = $(call us_dec2basen2,$1,$2,$(call us_gpower,$1,$2))
+
+# ----------------------------------------------------------------------------
+# Function:  us_dec2hex, us_dec2bin, us_dec2oct
+# Arguments: 1: An unsigned integer
+# Returns:   The decimal argument converted to hexadecimal, binary or
+#            octal
+# ----------------------------------------------------------------------------
+us_dec2hex = $(__gmsl_tr1)$(call us_dec2basen,$1,16)
+us_dec2bin = $(__gmsl_tr1)$(call us_dec2basen,$1,2)
+us_dec2oct = $(__gmsl_tr1)$(call us_dec2basen,$1,8)
+
+# functions for dealing with signed numbers
+
+# ----------------------------------------------------------------------------
+# Function:  neg
+# Arguments: 1: A signed integer
+# Returns:   A non empty string if the arguemnt is negative, otherwise an empty
+#            string
+# ----------------------------------------------------------------------------
+neg = $(__gmsl_tr1)$(filter -%,$1)
+
+# ----------------------------------------------------------------------------
+# Function:  abs
+# Arguments: 1: A signed integer
+# Returns:   The absolute value of the argument
+# ----------------------------------------------------------------------------
+abs = $(1:-%=%)
+
+# ----------------------------------------------------------------------------
+# Function:  eq
+# Arguments: 1: A signed decimal integer
+#            2: A signed decimal integer
+# Returns:   A non empty string if the 2 arguments are equal, otherwise an empty
+#            string
+# ----------------------------------------------------------------------------
+eq = $(__gmsl_tr2)$(call __gmsl_make_bool,$(if $(call neg,$1),$(if $(call neg,$2),$(call us_eq,$(call abs,$1),$(call abs,$2)),),$(if $(call neg,$2),,$(call us_eq,$1,$2))))
+
+# ----------------------------------------------------------------------------
+# Function:  lt
+# Arguments: 1: A signed decimal integer
+#            2: A signed decimal integer
+# Returns:   A non empty string if argument 1 is less than argument 2, otherwise
+#            an empty string
+# ----------------------------------------------------------------------------
+lt = $(__gmsl_tr2)$(call __gmsl_make_bool,$(strip $(if $(call neg,$1),\
+	$(if $(call neg,$2),\
+		$(call us_lt,$(call abs,$2),$(call abs,$1)),\
+		1),\
+	$(if $(call neg,$2),,\
+		$(call us_lt,$1,$2)))))
+
+# ----------------------------------------------------------------------------
+# Function:  gt
+# Arguments: 1: A signed decimal integer
+#            2: A signed decimal integer
+# Returns:   A non empty string if argument 1 is greater than argument 2,
+#            otherwise an empty string
+# ----------------------------------------------------------------------------
+gt = $(__gmsl_tr2)$(call lt,$2,$1)
+
+# ----------------------------------------------------------------------------
+# Function:  ne
+# Arguments: 1: A signed decimal integer
+#            2: A signed decimal integer
+# Returns:   A non empty string if the 2 arguments are not equal, otherwise an
+#            empty string
+# ----------------------------------------------------------------------------
+ne = $(__gmsl_tr2)$(call not,$(call eq,$1,$2))
+
+# ----------------------------------------------------------------------------
+# Function:  lte
+# Arguments: 1: A signed decimal integer
+#            2: A signed decimal integer
+# Returns:   A non empty string if argument 1 is less than or equal to argument 2,
+#            otherwise an empty string
+# ----------------------------------------------------------------------------
+lte = $(__gmsl_tr2)$(call not,$(call gt,$1,$2))
+
+# ----------------------------------------------------------------------------
+# Function:  lte
+# Arguments: 1: A signed decimal integer
+#            2: A signed decimal integer
+# Returns:   A non empty string if argument 1 is greater than or equal to
+#            argument 2, otherwise an empty string
+# ----------------------------------------------------------------------------
+gte = $(__gmsl_tr2)$(call not,$(call lt,$1,$2))
+
+# ----------------------------------------------------------------------------
+# Function:  min, max
+# Arguments: 1: A signed decimal integer
+#            2: A signed decimal integer
+# Returns:   The smaller (min) or larger (max) of the arguments
+# ----------------------------------------------------------------------------
+min = $(__gmsl_tr2)$(if $(call lt,$1,$2),$1,$2)
+max = $(__gmsl_tr2)$(if $(call lt,$1,$2),$2,$1)
+
+# ----------------------------------------------------------------------------
+# Function:  inc, dec
+# Arguments: 1: A signed decimal integer
+# Returns:   The argument incremented or decremented by one
+# ----------------------------------------------------------------------------
+inc = $(__gmsl_tr1)$(if $(call neg,$1),$(if $(call is_eq,$1,-1),0,-$(call us_dec,$(call abs,$1))),$(call us_inc,$1))
+dec = $(__gmsl_tr1)$(if $(call neg,$1),-$(call us_inc,$(call abs,$1)),$(if $(call is_eq,$1,0),-1,$(call us_dec,$1)))
+
+# ----------------------------------------------------------------------------
+# Function:  plus
+# Arguments: 1: A signed decimal integer
+#            2: A signed decimal integer
+# Returns:   The sum of argument 1 and argument 2
+# ----------------------------------------------------------------------------
+plus = $(__gmsl_tr2)$(strip $(if $(call neg,$1),\
+	$(if $(call neg,$2),\
+		-$(call us_plus,$(call abs,$1),$(call abs,$2)),\
+		$(if $(call us_lt,$2,$(call abs,$1)),\
+			-$(call us_subtract,$(call abs,$1),$2),\
+			$(call us_subtract,$2,$(call abs,$1)))),\
+	$(if $(call neg,$2),\
+		$(if $(call us_lt,$1,$(call abs,$2)),\
+			-$(call us_subtract,$(call abs,$2),$1),\
+			$(call us_subtract,$1,$(call abs,$2))),\
+		$(call us_plus,$1,$2))))
+
+# ----------------------------------------------------------------------------
+# Function:  subtract
+# Arguments: 1: A signed decimal integer
+#            2: A signed decimal integer
+# Returns:   Argument 2 subtracted from argument 1
+# ----------------------------------------------------------------------------
+subtract = $(__gmsl_tr2)$(strip $(if $(call neg,$1),\
+	$(if $(call neg,$2),\
+		$(if $(call us_lt,$(call abs,$2),$(call abs,$1)),\
+			-$(call us_subtract,$(call abs,$1),$(call abs,$2)),\
+			$(call us_subtract,$(call abs,$2),$(call abs,$1))),\
+		-$(call us_plus,$2,$(call abs,$1))),\
+	$(if $(call neg,$2),\
+		$(call us_plus,$1,$(call abs,$2)),\
+		$(if $(call us_lt,$1,$2),\
+			-$(call us_subtract,$2,$1),\
+			$(call us_subtract,$1,$2)))))
+
+__mds = $(strip $(patsubst -0,0,$(if $(call neg,$2),\
+	$(if $(call neg,$3),$(call $1,$(call abs,$2),$(call abs,$3)),-$(call $1,$(call abs,$2),$3)),\
+	$(if $(call neg,$3),-$(call $1,$2,$(call abs,$3)),$(call $1,$2,$3)))))
+
+# ----------------------------------------------------------------------------
+# Function:  multiply
+# Arguments: 1: A signed decimal integer
+#            2: A signed decimal integer
+# Returns:   Argument 1 multiplied by argument 2
+# ----------------------------------------------------------------------------
+multiply = $(__gmsl_tr2)$(call __mds,us_multiply,$1,$2)
+
+# ----------------------------------------------------------------------------
+# Function:  divide
+# Arguments: 1: A signed decimal integer
+#            2: A signed decimal integer
+# Returns:   Argument 1 divided by argument 2
+# ----------------------------------------------------------------------------
+divide = $(__gmsl_tr2)$(call __mds,us_divide,$1,$2)
+
+# ----------------------------------------------------------------------------
+# Function:  power
+# Arguments: 1: A signed decimal integer
+#            2: A signed decimal integer
+# Returns:   Argument 1 to the power of argument 2
+# ----------------------------------------------------------------------------
+power = $(__gmsl_tr2)$(if $(call neg,$2),0,$(call us_power,$(call abs,$1),$2))
 
 # ----------------------------------------------------------------------------
 # Function:  sequence
 # Arguments: 1: An integer
 #            2: An integer
-# Returns:   The sequence [arg1, arg2] of integers if arg1 < arg2 or
-#            [arg2, arg1] if arg2 > arg1. If arg1 == arg1 return [arg1]
+# Returns:   The incrementing sequence [arg1, ..., arg2] of integers.
+#            If arg1 == arg2 return [arg1]
 # ----------------------------------------------------------------------------
-sequence = $(__gmsl_tr2)$(strip $(if $(call lte,$1,$2),          \
-         $(call __gmsl_sequence_up,$1,$2),                       \
-         $(call __gmsl_sequence_dn,$2,$1)))
-
-__gmsl_sequence_up = $(if $(call seq,$1,$2),$1,$1 $(call __gmsl_sequence_up,$(call inc,$1),$2))
-__gmsl_sequence_dn = $(if $(call seq,$1,$2),$1,$2 $(call __gmsl_sequence_dn,$1,$(call dec,$2)))
+sequence = $(__gmsl_tr2)$(if $(call eq,$1,$2),$1,$1 $(call sequence,$(if $(call lt,$1,$2),$(call inc,$1),$(call dec,$1)),$2))
 
 # ----------------------------------------------------------------------------
 # Function:  dec2hex, dec2bin, dec2oct
@@ -765,18 +1058,33 @@ __gmsl_sequence_dn = $(if $(call seq,$1,$2),$1,$2 $(call __gmsl_sequence_dn,$1,$
 #            octal
 # ----------------------------------------------------------------------------
 
-__gmsl_digit = $(subst 15,f,$(subst 14,e,$(subst 13,d,$(subst 12,c,$(subst 11,b,$(subst 10,a,$1))))))
+dec2hex = $(__gmsl_tr1)$(if $(call neg,$1),-,)$(call us_dec2hex,$(call abs,$1))
+dec2bin = $(__gmsl_tr1)$(if $(call neg,$1),-,)$(call us_dec2bin,$(call abs,$1))
+dec2oct = $(__gmsl_tr1)$(if $(call neg,$1),-,)$(call us_dec2oct,$(call abs,$1))
 
-dec2hex = $(call __gmsl_dec2base,$(call int_encode,$1),$(call int_encode,16))
-dec2bin = $(call __gmsl_dec2base,$(call int_encode,$1),$(call int_encode,2))
-dec2oct = $(call __gmsl_dec2base,$(call int_encode,$1),$(call int_encode,8))
+# functions for backwards compatibility
 
-__gmsl_base_divide = $(subst $2,X ,$1)
-__gmsl_q = $(strip $(filter X,$1))
-__gmsl_r = $(words $(filter x,$1))
-
-__gmsl_dec2base = $(eval __gmsl_temp := $(call __gmsl_base_divide,$1,$2))$(call __gmsl_dec2base_,$(call __gmsl_q,$(__gmsl_temp)),$(call __gmsl_r,$(__gmsl_temp)),$2)
-__gmsl_dec2base_ = $(if $1,$(call __gmsl_dec2base,$(subst X,x,$1),$3))$(call __gmsl_digit,$2)
+int_encode = $1
+int_decode = $1
+int_inc = $(call inc,$1)
+int_dec = $(call dec,$1)
+int_plus = $(call plus,$1,$2)
+int_subtract = $(call subtract,$1,$2)
+int_multiply = $(call multiply,$1,$2)
+int_divide = $(call divide,$1,$2)
+int_max = $(call max,$1,$2)
+int_min = $(call min,$1,$2)
+int_double = $(call multiply,$1,2)
+double = $(call multiply,$1,2)
+int_halve = $(call divide,$1,2)
+halve = $(call divide,$1,2)
+int_gt = $(call gt,$1,$2)
+int_gte = $(call gte,$1,$2)
+int_lt = $(call lt,$1,$2)
+int_lte = $(call lte,$1,$2)
+int_eq = $(call eq,$1,$2)
+int_ne = $(call ne,$1,$2)
+__strip_leading_zero = $(call us_slzs,$(if $1,$1,0))
 
 ifdef __gmsl_have_eval
 # ###########################################################################
@@ -882,7 +1190,7 @@ ifdef __gmsl_have_eval
 # Example:   Set memo = $(shell echo "$1" | md5sum) to make a cache
 #            of MD5 hashes of strings. $(call memoize,memo,foo bar baz)
 # ----------------------------------------------------------------------------
-__gmsl_memoize = $(subst $(__gmsl_space),§,$1)cc2af1bb7c4482f2ba75e338b963d3e7$(subst $(__gmsl_space),§,$2)
+__gmsl_memoize = $(subst $(__gmsl_space),ï¿½,$1)cc2af1bb7c4482f2ba75e338b963d3e7$(subst $(__gmsl_space),ï¿½,$2)
 memoize = $(__gmsl_tr2)$(strip $(if $(call defined,__gmsl_m,$(__gmsl_memoize)),\
                   $(call get,__gmsl_m,$(__gmsl_memoize)),                      \
                   $(call __gmsl_set,__gmsl_m,$(__gmsl_memoize),$(call $1,$2))))

@@ -14,7 +14,7 @@
 #
 # Redistributions of source code must retain the above copyright
 # notice, this list of conditions and the following disclaimer.
-# 
+#
 # Redistributions in binary form must reproduce the above copyright
 # notice, this list of conditions and the following disclaimer in the
 # documentation and/or other materials provided with the distribution.
@@ -51,8 +51,8 @@ all:
 
 include gmsl
 
-passed :=
-failed :=
+passed := 0
+failed := 0
 
 ECHO := /bin/echo
 
@@ -342,26 +342,6 @@ $(call test_assert,$(call __strip_leading_zero,0010),10)
 $(call test_assert,$(call __strip_leading_zero,00000011000),11000)
 $(call stop_test)
 
-$(call start_test,int_encode)
-$(call test_assert,$(call int_encode,0),)
-$(call test_assert,$(call int_encode,1),x)
-$(call test_assert,$(call int_encode,001),x)
-$(call test_assert,$(call int_encode,2),x x)
-$(call test_assert,$(call int_encode,10),x x x x x x x x x x)
-$(call test_assert,$(words $(call int_encode,123)),123)
-$(call test_assert,$(words $(call int_encode,1234)),1234)
-$(call test_assert,$(words $(call int_encode,12345)),12345)
-$(call test_assert,$(words $(call int_encode,012345)),12345)
-$(call test_assert,$(words $(call int_encode,1000000)),1000000)
-$(call stop_test)
-
-$(call start_test,int_decode)
-$(call test_assert,$(call int_decode,),0)
-$(call test_assert,$(call int_decode,x),1)
-$(call test_assert,$(call int_decode,x x),2)
-$(call test_assert,$(call int_decode,x x x x x x x x x x),10)
-$(call stop_test)
-
 $(call start_test,int_plus)
 $(call test_assert,$(call int_plus,$(call int_encode,3),$(call int_encode,4)),$(call int_encode,7))
 $(call test_assert,$(call int_plus,$(call int_encode,0),$(call int_encode,4)),$(call int_encode,4))
@@ -377,23 +357,38 @@ $(call test_assert,$(call plus,0,4),4)
 $(call test_assert,$(call plus,3,0),3)
 $(call test_assert,$(call plus,03,00),3)
 $(call test_assert,$(call plus,0,0),0)
+$(call test_assert,$(call plus,1,-5),-4)
+$(call test_assert,$(call plus,-4,2),-2)
+$(call test_assert,$(call plus,-6,-6),-12)
+$(call test_assert,$(call plus,2984350,39284759),42269109)
+$(call test_assert,$(call plus,98743,-434),98309)
+$(call test_assert,$(call plus,-0956,293084),292128)
+$(call test_assert,$(call plus,-245756,-8934275),-9180031)
+$(call test_assert,$(call plus,-43,43),0)
+$(call test_assert,$(call plus,537,-537),0)
 $(call stop_test)
 
-__gmsl_warning = $1
 $(call start_test,int_subtract)
-$(call test_assert,$(call int_subtract,$(call int_encode,3),$(call int_encode,4)),Subtraction underflow)
+$(call test_assert,$(call int_subtract,$(call int_encode,3),$(call int_encode,4)),-1)
 $(call test_assert,$(call int_subtract,$(call int_encode,4),$(call int_encode,3)),$(call int_encode,1))
 $(call test_assert,$(call int_subtract,$(call int_encode,3),$(call int_encode,0)),$(call int_encode,3))
 $(call test_assert,$(call int_subtract,$(call int_encode,0),$(call int_encode,0)),$(call int_encode,0))
 $(call test_assert,$(call int_subtract,$(call int_encode,1),$(call int_encode,0)),$(call int_encode,1))
 $(call stop_test)
 
-__gmsl_warning = x x x x x x x x x x
 $(call start_test,subtract)
-$(call test_assert,$(call subtract,3,4),10)
+$(call test_assert,$(call subtract,3,4),-1)
 $(call test_assert,$(call subtract,4,3),1)
 $(call test_assert,$(call subtract,3,0),3)
 $(call test_assert,$(call subtract,0,0),0)
+$(call test_assert,$(call subtract,9,-1),10)
+$(call test_assert,$(call subtract,-4,6),-10)
+$(call test_assert,$(call subtract,-6,-7),1)
+$(call test_assert,$(call subtract,294087,927384),-633297)
+$(call test_assert,$(call subtract,94582,-34573),129155)
+$(call test_assert,$(call subtract,-12734,43987),-56721)
+$(call test_assert,$(call subtract,-589368,-8314),-581054)
+$(call test_assert,$(call subtract,-55,-55),0)
 $(call stop_test)
 
 $(call start_test,int_multiply)
@@ -410,9 +405,16 @@ $(call test_assert,$(call multiply,4,3),12)
 $(call test_assert,$(call multiply,3,0),0)
 $(call test_assert,$(call multiply,0,3),0)
 $(call test_assert,$(call multiply,0,0),0)
+$(call test_assert,$(call multiply,3,-4),-12)
+$(call test_assert,$(call multiply,-6,6),-36)
+$(call test_assert,$(call multiply,-12,-4),48)
+$(call test_assert,$(call multiply,45769,98243),4496483867)
+$(call test_assert,$(call multiply,923,-9845),-9086935)
+$(call test_assert,$(call multiply,-83834,34568),-2897973712)
+$(call test_assert,$(call multiply,-124835,-8564),1069086940)
+$(call test_assert,$(call multiply,-6,0),0)
 $(call stop_test)
 
-__gmsl_error = $1
 $(call start_test,int_divide)
 $(call test_assert,$(call int_divide,$(call int_encode,3),$(call int_encode,4)),$(call int_encode,0))
 $(call test_assert,$(call int_divide,$(call int_encode,4),$(call int_encode,3)),$(call int_encode,1))
@@ -423,17 +425,34 @@ $(call test_assert,$(call int_divide,$(call int_encode,0),$(call int_encode,1)),
 $(call test_assert,$(call int_divide,$(call int_encode,1),$(call int_encode,0)),Division by zero)
 $(call stop_test)
 
-__gmsl_error = x x x x x x x x x x
 $(call start_test,divide)
 $(call test_assert,$(call divide,3,4),0)
 $(call test_assert,$(call divide,4,3),1)
 $(call test_assert,$(call divide,21,2),10)
 $(call test_assert,$(call divide,20,2),10)
 $(call test_assert,$(call divide,19,2),9)
-$(call test_assert,$(call divide,1,0),10)
+$(call test_assert,$(call divide,4,-3),-1)
+$(call test_assert,$(call divide,5,-6),0)
+$(call test_assert,$(call divide,-3,3),-1)
+$(call test_assert,$(call divide,34523,4533),7)
+$(call test_assert,$(call divide,456345,3),152115)
+$(call test_assert,$(call divide,1243987,-23),-54086)
+$(call test_assert,$(call divide,-23,342442),0)
+$(call test_assert,$(call divide,1,0),Division by zero)
+$(call test_assert,$(call divide,1,4),0)
 $(call stop_test)
 
-$(call start_test,dec2hex) 
+$(call start_test,power)
+$(call test_assert,$(call power,3,4),81)
+$(call test_assert,$(call power,4,3),64)
+$(call test_assert,$(call power,45,3),91125)
+$(call test_assert,$(call power,18,9),198359290368)
+$(call test_assert,$(call power,2,19),524288)
+$(call test_assert,$(call power,4,-3),0)
+$(call test_assert,$(call power,0,556),0)
+$(call stop_test)
+
+$(call start_test,dec2hex)
 $(call test_assert,$(call dec2hex,0),0)
 $(call test_assert,$(call dec2hex,1),1)
 $(call test_assert,$(call dec2hex,10),a)
@@ -443,7 +462,7 @@ $(call test_assert,$(call dec2hex,255),ff)
 $(call test_assert,$(call dec2hex,513),201)
 $(call stop_test)
 
-$(call start_test,dec2oct) 
+$(call start_test,dec2oct)
 $(call test_assert,$(call dec2oct,0),0)
 $(call test_assert,$(call dec2oct,1),1)
 $(call test_assert,$(call dec2oct,8),10)
@@ -452,7 +471,7 @@ $(call test_assert,$(call dec2oct,1024),2000)
 $(call test_assert,$(call dec2oct,1025),2001)
 $(call stop_test)
 
-$(call start_test,dec2bin) 
+$(call start_test,dec2bin)
 $(call test_assert,$(call dec2bin,0),0)
 $(call test_assert,$(call dec2bin,1),1)
 $(call test_assert,$(call dec2bin,8),1000)
@@ -593,14 +612,12 @@ $(call test_assert,$(call inc,4),5)
 $(call test_assert,$(call inc,10),11)
 $(call stop_test)
 
-__gmsl_warning = $1
 $(call start_test,int_dec)
 $(call test_assert,$(call int_dec,$(call int_encode,1)),$(call int_encode,0))
 $(call test_assert,$(call int_dec,$(call int_encode,4)),$(call int_encode,3))
 $(call test_assert,$(call int_dec,$(call int_encode,10)),$(call int_encode,9))
 $(call stop_test)
 
-__gmsl_warning = x x x x x x x x x x
 $(call start_test,dec)
 $(call test_assert,$(call dec,1),0)
 $(call test_assert,$(call dec,4),3)
@@ -631,7 +648,7 @@ $(call test_assert,$(call halve,0),0)
 $(call test_assert,$(call halve,2),1)
 $(call test_assert,$(call halve,8),4)
 $(call test_assert,$(call halve,7),3)
-$(call stop_test) 
+$(call stop_test)
 
 $(call start_test,gt)
 $(call test_assert,$(call gt,2,3),)
@@ -745,7 +762,7 @@ endif
 ifneq ("$(shell md5 -s hello 2> /dev/null)","")
 md5_program := md5
 endif
-ifeq ("$(md5_program)","") 
+ifeq ("$(md5_program)","")
 $(error Can't find suitable MD5 program. Tried md5sum and md5)
 endif
 md5 = $(eval md5_counter = $(call int_inc,$(md5_counter)))$(firstword $(shell echo "$1" | $(md5_program)))

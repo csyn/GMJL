@@ -369,7 +369,7 @@ $(call test_assert,$(call plus,537,-537),0)
 $(call stop_test)
 
 $(call start_test,int_subtract)
-$(call test_assert,$(call int_subtract,$(call int_encode,3),$(call int_encode,4)),-1)
+$(call test_assert,$(call int_subtract,$(call int_encode,3),$(call int_encode,4)),Subtraction underflow)
 $(call test_assert,$(call int_subtract,$(call int_encode,4),$(call int_encode,3)),$(call int_encode,1))
 $(call test_assert,$(call int_subtract,$(call int_encode,3),$(call int_encode,0)),$(call int_encode,3))
 $(call test_assert,$(call int_subtract,$(call int_encode,0),$(call int_encode,0)),$(call int_encode,0))

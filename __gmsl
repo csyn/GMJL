@@ -606,7 +606,7 @@ l_slzs = $(__gmsl_tr1)$(call l_slzs2,$1,$(words $1))
 # Returns:   A non empty string if the 2 arguments are equal, otherwise an empty
 #            string
 # ----------------------------------------------------------------------------
-nlz_eq = $(__gmsl_tr2)$(filter $1,$2)
+nlz_eq = $(__gmsl_tr2)$(call __gmsl_make_bool,$(filter $1,$2))
 
 # ----------------------------------------------------------------------------
 # Function:  digit_lt
@@ -654,9 +654,9 @@ digit_sub = $(__gmsl_tr2)$(if $(call nlz_eq,$2,0),$1,$(call digit_sub,$(call dig
 # Returns:   A non empty string if argument 1 is less than argument 2,
 #            otherwise an empty string
 # ----------------------------------------------------------------------------
-l_lt4 = $(if $(call digit_lt,$3,$4),1,$(if $(call nlz_eq,$3,$4),$(if $1,$(call l_lt,$1,$2),),))
+l_lt4 = $(if $(call digit_lt,$3,$4),$(true),$(if $(call nlz_eq,$3,$4),$(if $1,$(call l_lt,$1,$2),$(false)),$(false)))
 l_lt3 = $(call l_lt4,$(wordlist 2,$3,$1),$(wordlist 2,$3,$2),$(firstword $1),$(firstword $2))
-l_lt2 = $(if $(call nlz_eq,$3,$4),$(call l_lt3,$1,$2,$3),$(if $(call us_lt,$3,$4),1,))
+l_lt2 = $(if $(call nlz_eq,$3,$4),$(call l_lt3,$1,$2,$3),$(if $(call us_lt,$3,$4),$(true),$(false)))
 l_lt = $(__gmsl_tr2)$(call l_lt2,$1,$2,$(words $1),$(words $2))
 
 # ----------------------------------------------------------------------------
@@ -675,8 +675,8 @@ rl_lt = $(__gmsl_tr2)$(call reverse,$(call l_lt,$(call reverse,$1),$(call revers
 # Returns:   A non empty string if argument 1 equal to argument 2, otherwise an
 #            empty string
 # ----------------------------------------------------------------------------
-rl_eq2 = $(if $(call nlz_eq,$(word 1,$1),$(word 1,$2)),$(if $(call nlz_eq,$(words $1),1),1,$(call rl_eq2,$(wordlist 2,$(words $1),$1),$(wordlist 2,$(words $2),$2))),)
-rl_eq = $(__gmsl_tr2)$(if $(call nlz_eq,$(words $1),$(words $2)),$(call rl_eq2,$1,$2),)
+rl_eq2 = $(if $(call nlz_eq,$(word 1,$1),$(word 1,$2)),$(if $(call nlz_eq,$(words $1),1),$(true),$(call rl_eq2,$(wordlist 2,$(words $1),$1),$(wordlist 2,$(words $2),$2))),$(false))
+rl_eq = $(__gmsl_tr2)$(if $(call nlz_eq,$(words $1),$(words $2)),$(call rl_eq2,$1,$2),$(flase))
 
 # ----------------------------------------------------------------------------
 # Function:  rl_inc
@@ -906,31 +906,29 @@ abs = $(1:-%=%)
 # Function:  eq
 # Arguments: 1: A signed decimal integer
 #            2: A signed decimal integer
-# Returns:   A non empty string if the 2 arguments are equal, otherwise an empty
-#            string
+# Returns:   $(true) if the 2 arguments are equal, otherwise $(false)
 # ----------------------------------------------------------------------------
-eq = $(__gmsl_tr2)$(call __gmsl_make_bool,$(if $(call neg,$1),$(if $(call neg,$2),$(call us_eq,$(call abs,$1),$(call abs,$2)),),$(if $(call neg,$2),,$(call us_eq,$1,$2))))
+eq = $(__gmsl_tr2)$(if $(call neg,$1),$(if $(call neg,$2),$(call us_eq,$(call abs,$1),$(call abs,$2)),$(false)),$(if $(call neg,$2),$(false),$(call us_eq,$1,$2)))
 
 # ----------------------------------------------------------------------------
 # Function:  lt
 # Arguments: 1: A signed decimal integer
 #            2: A signed decimal integer
-# Returns:   A non empty string if argument 1 is less than argument 2, otherwise
-#            an empty string
+# Returns:   $(true) if argument 1 is less than argument 2, otherwise $(false)
 # ----------------------------------------------------------------------------
-lt = $(__gmsl_tr2)$(call __gmsl_make_bool,$(strip $(if $(call neg,$1),\
+lt = $(__gmsl_tr2)$(strip $(if $(call neg,$1),\
 	$(if $(call neg,$2),\
 		$(call us_lt,$(call abs,$2),$(call abs,$1)),\
-		1),\
-	$(if $(call neg,$2),,\
-		$(call us_lt,$1,$2)))))
+		$(true)),\
+	$(if $(call neg,$2),$(false),\
+		$(call us_lt,$1,$2))))
 
 # ----------------------------------------------------------------------------
 # Function:  gt
 # Arguments: 1: A signed decimal integer
 #            2: A signed decimal integer
-# Returns:   A non empty string if argument 1 is greater than argument 2,
-#            otherwise an empty string
+# Returns:   $(true) if argument 1 is greater than argument 2, otherwise
+# 	     $(false)
 # ----------------------------------------------------------------------------
 gt = $(__gmsl_tr2)$(call lt,$2,$1)
 
@@ -938,8 +936,7 @@ gt = $(__gmsl_tr2)$(call lt,$2,$1)
 # Function:  ne
 # Arguments: 1: A signed decimal integer
 #            2: A signed decimal integer
-# Returns:   A non empty string if the 2 arguments are not equal, otherwise an
-#            empty string
+# Returns:   True if the 2 arguments are not equal, otherwise false
 # ----------------------------------------------------------------------------
 ne = $(__gmsl_tr2)$(call not,$(call eq,$1,$2))
 
@@ -947,8 +944,8 @@ ne = $(__gmsl_tr2)$(call not,$(call eq,$1,$2))
 # Function:  lte
 # Arguments: 1: A signed decimal integer
 #            2: A signed decimal integer
-# Returns:   A non empty string if argument 1 is less than or equal to argument 2,
-#            otherwise an empty string
+# Returns:   $(true) if argument 1 is less than or equal to argument 2,
+# 	     otherwise $(false)
 # ----------------------------------------------------------------------------
 lte = $(__gmsl_tr2)$(call not,$(call gt,$1,$2))
 
@@ -956,8 +953,8 @@ lte = $(__gmsl_tr2)$(call not,$(call gt,$1,$2))
 # Function:  lte
 # Arguments: 1: A signed decimal integer
 #            2: A signed decimal integer
-# Returns:   A non empty string if argument 1 is greater than or equal to
-#            argument 2, otherwise an empty string
+# Returns:   $(true) if argument 1 is greater than or equal to argument 2,
+# 	     otherwise $(false)
 # ----------------------------------------------------------------------------
 gte = $(__gmsl_tr2)$(call not,$(call lt,$1,$2))
 
@@ -1064,26 +1061,26 @@ dec2oct = $(__gmsl_tr1)$(if $(call neg,$1),-,)$(call us_dec2oct,$(call abs,$1))
 
 # functions for backwards compatibility
 
-int_encode = $1
-int_decode = $1
-int_inc = $(call inc,$1)
-int_dec = $(call dec,$1)
-int_plus = $(call plus,$1,$2)
-int_subtract = $(call subtract,$1,$2)
-int_multiply = $(call multiply,$1,$2)
-int_divide = $(call divide,$1,$2)
-int_max = $(call max,$1,$2)
-int_min = $(call min,$1,$2)
-int_double = $(call multiply,$1,2)
+int_encode = $(call rl_encode,$1)
+int_decode = $(call rl_decode,$1)
+int_inc = $(strip $(call rl_inc,$1))
+int_dec = $(strip $(call rl_dec,$1))
+int_plus = $(strip $(call rl_plus,$1,$2))
+int_subtract = $(strip $(if $(call rl_lt,$1,$2),Subtraction underflow,$(call rl_subtract,$1,$2)))
+int_multiply = $(call rl_multiply,$1,$2)
+int_divide = $(strip $(if $(call eq,$2,0),Division by zero,$(call rl_divide,$1,$2)))
+int_max = $(if $(call rl_lt,$1,$2),$2,$1)
+int_min = $(if $(call rl_lt,$1,$2),$1,$2)
+int_double = $(call rl_multiply,$1,2)
 double = $(call multiply,$1,2)
-int_halve = $(call divide,$1,2)
+int_halve = $(strip $(call rl_divide,$1,2))
 halve = $(call divide,$1,2)
-int_gt = $(call gt,$1,$2)
-int_gte = $(call gte,$1,$2)
-int_lt = $(call lt,$1,$2)
-int_lte = $(call lte,$1,$2)
-int_eq = $(call eq,$1,$2)
-int_ne = $(call ne,$1,$2)
+int_gt = $(call rl_lt,$2,$1)
+int_gte = $(call not,$(call rl_lt,$1,$2))
+int_lt = $(call rl_lt,$1,$2)
+int_lte = $(call not,$(call int_lt,$2,$1))
+int_eq = $(call eq,$(call rl_decode,$1),$(call rl_decode,$2))
+int_ne = $(call not,$(call int_eq,$1,$2))
 __strip_leading_zero = $(call us_slzs,$(if $1,$1,0))
 
 ifdef __gmsl_have_eval
